@@ -1,0 +1,78 @@
+---
+title: "Modelo de Gestión Integrada del Recurso Hídrico"
+author: "Proyecto de Series de Tiempo Aplicadas"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Contexto del Problema
+
+Este análisis busca crear un modelo para predecir la **disponibilidad mensual de agua** (en hm³) en una cuenca rural. A diferencia de un modelo univariado, este utilizará variables externas (regresores) que influyen directamente en la disponibilidad de agua: la **precipitación**, la **evapotranspiración** y el **nivel del embalse**. El modelo a utilizar es un ARIMAX.
+
+## 2. Carga y Preparación de los Datos
+
+Cargamos las librerías y el dataset. Luego, separamos nuestra variable objetivo (`y`) de las variables predictoras (`xreg`) y las convertimos a objetos de series de tiempo (`ts`).
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+
+# Cargar datos desde la **ruta relativa**
+datos_cuenca <- read_csv("data/datos_cuenca_sinu.csv")
+
+# Separar la variable a predecir (y)
+disponibilidad_ts <- ts(datos_cuenca$Disponibilidad_Agua_hm3, start = c(2021, 1), frequency = 12)
+
+# Crear una matriz con los regresores externos (xreg)
+regresores_externos <- as.matrix(datos_cuenca[, c("Precipitacion_mm", "Evotranspiracion_mm", "Nivel_Embalse_m")])
+regresores_ts <- ts(regresores_externos, start = c(2021, 1), frequency = 12)
+```
+
+## 3. Construcción del Modelo ARIMAX
+
+Usamos auto.arima() de nuevo, pero esta vez le pasamos nuestras variables predictoras a través del argumento xreg. El modelo buscará la mejor estructura ARIMA después de tener en cuenta el efecto de los regresores.
+
+```{r}
+modelo_arimax <- auto.arima(disponibilidad_ts, xreg = regresores_ts)
+
+print("Resumen del Modelo ARIMAX ajustado:")
+summary(modelo_arimax)
+```
+
+El resultado muestra los coeficientes para cada una de las variables predictoras, indicando cómo afectan a la disponibilidad de agua.
+
+## 4. Creación de Escenario Futuro y Predicción
+
+Un punto clave de los modelos ARIMAX: para predecir el futuro de nuestra variable y, necesitamos tener una estimación o un escenario futuro para nuestras variables xreg.
+
+Aquí, crearemos un escenario hipotético para los próximos 6 meses basado en promedios históricos y metas de operación.
+
+```{r}
+# Escenario futuro para los próximos 6 meses (Ene-Jun 2024)
+escenario_futuro_xreg <- as.matrix(data.frame(
+  Precipitacion_mm = c(40, 35, 60, 180, 250, 280),
+  Evotranspiracion_mm = c(100, 110, 125, 120, 100, 95),
+  Nivel_Embalse_m = c(105, 104, 103.5, 106, 108, 111)
+))
+
+# Generar la predicción usando el escenario futuro
+prediccion_arimax <- forecast(modelo_arimax, h = 6, xreg = escenario_futuro_xreg)
+```
+
+## 5. Visualización y Conclusiones
+
+Finalmente, visualizamos los datos históricos junto a la predicción generada por el modelo bajo el escenario propuesto.
+
+```{r}
+autoplot(prediccion_arimax) +
+  labs(
+    title = "Predicción de Disponibilidad Hídrica con Modelo ARIMAX",
+    subtitle = "Pronóstico a 6 meses basado en escenario climático y de operación",
+    x = "Año",
+    y = "Disponibilidad de Agua (hm³)"
+  ) +
+  theme_minimal()
+```
+
+Este modelo permite a los gestores de la cuenca simular diferentes escenarios futuros (ej. un "año seco" con baja precipitación) y observar el impacto directo en la disponibilidad de agua, permitiendo una toma de decisiones proactiva y basada en datos.
+
